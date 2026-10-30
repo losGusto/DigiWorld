@@ -1,0 +1,449 @@
+name: Build APK
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Criar projeto
+        run: |
+          set -e
+          mkdir -p proj/app/src/main/java/com/gustavo/digimonport proj/app/src/main/jniLibs/arm64-v8a
+          cat > proj/settings.gradle.kts <<'EOF_0'
+          pluginManagement {
+              repositories { google(); mavenCentral(); gradlePluginPortal() }
+          }
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+              repositories { google(); mavenCentral(); maven("https://jitpack.io") }
+          }
+          rootProject.name = "DigimonWorldPort"
+          include(":app")
+          EOF_0
+          cat > proj/build.gradle.kts <<'EOF_1'
+          plugins {
+              id("com.android.application") version "8.5.2" apply false
+              id("org.jetbrains.kotlin.android") version "1.9.24" apply false
+          }
+          EOF_1
+          cat > proj/gradle.properties <<'EOF_2'
+          org.gradle.jvmargs=-Xmx3g -Dfile.encoding=UTF-8
+          android.useAndroidX=true
+          android.nonTransitiveRClass=true
+          EOF_2
+          cat > proj/app/build.gradle.kts <<'EOF_3'
+          plugins {
+              id("com.android.application")
+              id("org.jetbrains.kotlin.android")
+          }
+
+          android {
+              namespace = "com.gustavo.digimonport"
+              compileSdk = 34
+
+              defaultConfig {
+                  applicationId = "com.gustavo.digimonport"
+                  minSdk = 24
+                  targetSdk = 34
+                  versionCode = 1
+                  versionName = "1.0"
+                  ndk { abiFilters += "arm64-v8a" }
+              }
+
+              // Keystore fixa: permite atualizar o app por cima sem desinstalar
+              signingConfigs {
+                  create("fixed") {
+                      storeFile = file("../digimon.keystore")
+                      storePassword = "digimon123"
+                      keyAlias = "digimon"
+                      keyPassword = "digimon123"
+                  }
+              }
+
+              buildTypes {
+                  release {
+                      isMinifyEnabled = false
+                      signingConfig = signingConfigs.getByName("fixed")
+                  }
+              }
+
+              compileOptions {
+                  sourceCompatibility = JavaVersion.VERSION_17
+                  targetCompatibility = JavaVersion.VERSION_17
+              }
+              kotlinOptions { jvmTarget = "17" }
+
+              packaging { jniLibs { useLegacyPackaging = true } }
+          }
+
+          dependencies {
+              implementation("androidx.activity:activity-ktx:1.9.0")
+              implementation("com.github.Swordfish90:LibretroDroid:0.12.0")
+          }
+          EOF_3
+          cat > proj/app/src/main/AndroidManifest.xml <<'EOF_4'
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+              <uses-feature android:glEsVersion="0x00030000" android:required="true" />
+
+              <application
+                  android:allowBackup="true"
+                  android:extractNativeLibs="true"
+                  android:label="Digimon World"
+                  android:theme="@android:style/Theme.Material.NoActionBar">
+
+                  <activity
+                      android:name=".MainActivity"
+                      android:exported="true">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
+                  </activity>
+
+                  <activity
+                      android:name=".GameActivity"
+                      android:exported="false"
+                      android:screenOrientation="sensorLandscape"
+                      android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout" />
+              </application>
+          </manifest>
+          EOF_4
+          cat > proj/app/src/main/java/com/gustavo/digimonport/MainActivity.kt <<'EOF_5'
+          package com.gustavo.digimonport
+
+          import android.content.Intent
+          import android.graphics.Color
+          import android.net.Uri
+          import android.os.Bundle
+          import android.provider.OpenableColumns
+          import android.view.Gravity
+          import android.widget.Button
+          import android.widget.LinearLayout
+          import android.widget.TextView
+          import androidx.activity.ComponentActivity
+          import androidx.activity.result.contract.ActivityResultContracts
+          import java.io.File
+
+          class MainActivity : ComponentActivity() {
+
+              private lateinit var status: TextView
+              private lateinit var btnGame: Button
+              private lateinit var btnBios: Button
+              private lateinit var btnPlay: Button
+
+              private val gameDir get() = File(filesDir, "game")
+              private val sysDir get() = File(filesDir, "system")
+
+              private val pickGame = registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+                  if (uris.isNotEmpty()) importGame(uris)
+              }
+              private val pickBios = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+                  if (uri != null) importBios(uri)
+              }
+
+              override fun onCreate(savedInstanceState: Bundle?) {
+                  super.onCreate(savedInstanceState)
+                  val d = resources.displayMetrics.density
+                  fun dp(v: Int) = (v * d).toInt()
+
+                  val root = LinearLayout(this).apply {
+                      orientation = LinearLayout.VERTICAL
+                      gravity = Gravity.CENTER
+                      setBackgroundColor(Color.parseColor("#101820"))
+                      setPadding(dp(24), dp(24), dp(24), dp(24))
+                  }
+
+                  root.addView(TextView(this).apply {
+                      text = "DIGIMON WORLD"
+                      textSize = 30f
+                      setTextColor(Color.parseColor("#FFB300"))
+                      gravity = Gravity.CENTER
+                  })
+                  root.addView(TextView(this).apply {
+                      text = "PS1 • Port Android"
+                      textSize = 14f
+                      setTextColor(Color.parseColor("#9FB3C8"))
+                      gravity = Gravity.CENTER
+                      setPadding(0, 0, 0, dp(24))
+                  })
+
+                  status = TextView(this).apply {
+                      textSize = 14f
+                      setTextColor(Color.WHITE)
+                      gravity = Gravity.CENTER
+                      setPadding(0, 0, 0, dp(20))
+                  }
+                  root.addView(status)
+
+                  fun button(label: String, onClick: () -> Unit): Button {
+                      val b = Button(this).apply { text = label; setOnClickListener { onClick() } }
+                      root.addView(b, LinearLayout.LayoutParams(dp(280), LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                          topMargin = dp(8)
+                      })
+                      return b
+                  }
+
+                  btnGame = button("Selecionar jogo (.cue + .bin)") { pickGame.launch(arrayOf("*/*")) }
+                  btnBios = button("BIOS do PS1 (opcional)") { pickBios.launch(arrayOf("*/*")) }
+                  btnPlay = button("JOGAR") { startActivity(Intent(this, GameActivity::class.java)) }
+
+                  setContentView(root)
+                  refresh()
+              }
+
+              private fun refresh() {
+                  val cue = gameDir.listFiles()?.firstOrNull { it.extension.equals("cue", true) }
+                  val bios = sysDir.listFiles()?.firstOrNull { it.extension.equals("bin", true) }
+                  status.text = (if (cue != null) "Jogo: ${cue.name}" else "Nenhum jogo selecionado") + "\n" +
+                      (if (bios != null) "BIOS: ${bios.name}" else "BIOS: não selecionada (usando HLE)")
+                  btnPlay.isEnabled = cue != null
+              }
+
+              private fun setBusy(busy: Boolean) {
+                  btnGame.isEnabled = !busy
+                  btnBios.isEnabled = !busy
+                  btnPlay.isEnabled = !busy && gameDir.listFiles()?.any { it.extension.equals("cue", true) } == true
+              }
+
+              private fun say(msg: String) = runOnUiThread { status.text = msg }
+
+              private fun nameOf(uri: Uri): String {
+                  var n: String? = null
+                  contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use {
+                      if (it.moveToFirst()) n = it.getString(0)
+                  }
+                  return File(n ?: uri.lastPathSegment ?: "arquivo.bin").name
+              }
+
+              private fun copy(uri: Uri, dest: File, label: String) {
+                  contentResolver.openInputStream(uri)!!.use { input ->
+                      dest.outputStream().use { out ->
+                          val buf = ByteArray(1 shl 20)
+                          var total = 0L
+                          var r = input.read(buf)
+                          while (r >= 0) {
+                              out.write(buf, 0, r)
+                              total += r
+                              say("Copiando $label... ${total / (1024 * 1024)} MB")
+                              r = input.read(buf)
+                          }
+                      }
+                  }
+              }
+
+              private fun importGame(uris: List<Uri>) {
+                  val names = uris.map { nameOf(it) }
+                  if (names.none { it.endsWith(".cue", true) }) {
+                      say("Selecione o .cue e o .bin JUNTOS (marque os dois arquivos).")
+                      return
+                  }
+                  setBusy(true)
+                  Thread {
+                      try {
+                          gameDir.deleteRecursively()
+                          gameDir.mkdirs()
+                          uris.forEachIndexed { i, u -> copy(u, File(gameDir, names[i]), names[i]) }
+
+                          val cue = gameDir.listFiles()!!.first { it.extension.equals("cue", true) }
+                          val refs = Regex("FILE\\s+\"([^\"]+)\"", RegexOption.IGNORE_CASE)
+                              .findAll(cue.readText()).map { it.groupValues[1] }.toList()
+                          val missing = refs.firstOrNull { !File(gameDir, it).exists() }
+                          if (missing != null) {
+                              say("O .cue pede o arquivo \"$missing\" que não foi selecionado. Escolha de novo.")
+                              gameDir.deleteRecursively()
+                          } else {
+                              runOnUiThread { refresh() }
+                          }
+                      } catch (e: Exception) {
+                          say("Erro ao copiar: ${e.message}")
+                      } finally {
+                          runOnUiThread { setBusy(false) }
+                      }
+                  }.start()
+              }
+
+              private fun importBios(uri: Uri) {
+                  setBusy(true)
+                  Thread {
+                      try {
+                          sysDir.mkdirs()
+                          sysDir.listFiles()?.forEach { it.delete() }
+                          copy(uri, File(sysDir, nameOf(uri)), "BIOS")
+                          runOnUiThread { refresh() }
+                      } catch (e: Exception) {
+                          say("Erro ao copiar BIOS: ${e.message}")
+                      } finally {
+                          runOnUiThread { setBusy(false) }
+                      }
+                  }.start()
+              }
+          }
+          EOF_5
+          cat > proj/app/src/main/java/com/gustavo/digimonport/GameActivity.kt <<'EOF_6'
+          package com.gustavo.digimonport
+
+          import android.content.Context
+          import android.graphics.Canvas
+          import android.graphics.Color
+          import android.graphics.Paint
+          import android.graphics.drawable.GradientDrawable
+          import android.os.Build
+          import android.os.Bundle
+          import android.view.Gravity
+          import android.view.InputDevice
+          import android.view.KeyEvent
+          import android.view.MotionEvent
+          import android.view.View
+          import android.view.WindowManager
+          import android.widget.FrameLayout
+          import android.widget.TextView
+          import androidx.activity.ComponentActivity
+          import com.swordfish.libretrodroid.GLRetroView
+          import com.swordfish.libretrodroid.GLRetroViewData
+          import com.swordfish.libretrodroid.ShaderConfig
+          import java.io.File
+          import kotlin.math.hypot
+
+          class GameActivity : ComponentActivity() {
+
+              private var retro: GLRetroView? = null
+              private var fast = false
+
+              private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
+
+              private fun key(code: Int, down: Boolean) {
+                  retro?.sendKeyEvent(if (down) KeyEvent.ACTION_DOWN else KeyEvent.ACTION_UP, code, 0)
+              }
+
+              override fun onCreate(savedInstanceState: Bundle?) {
+                  super.onCreate(savedInstanceState)
+                  window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                  if (Build.VERSION.SDK_INT >= 28) {
+                      window.attributes.layoutInDisplayCutoutMode =
+                          WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+                  }
+                  hideSystemBars()
+
+                  val cue = File(filesDir, "game").listFiles()?.firstOrNull { it.extension.equals("cue", true) }
+                  if (cue == null) { finish(); return }
+
+                  val sys = File(filesDir, "system").apply { mkdirs() }
+                  val saves = File(filesDir, "saves").apply { mkdirs() }
+
+                  val data = GLRetroViewData(this).apply {
+                      coreFilePath = "libpcsx_rearmed_libretro_android.so"
+                      gameFilePath = cue.absolutePath
+                      systemDirectory = sys.absolutePath
+                      savesDirectory = saves.absolutePath
+                      shader = ShaderConfig.Default
+                  }
+                  val view = GLRetroView(this, data)
+                  retro = view
+                  lifecycle.addObserver(view)
+
+                  val root = FrameLayout(this)
+                  root.setBackgroundColor(Color.BLACK)
+                  root.addView(view, FrameLayout.LayoutParams(-1, -1))
+                  buildControls(root)
+                  setContentView(root)
+              }
+
+              private fun hideSystemBars() {
+                  @Suppress("DEPRECATION")
+                  window.decorView.systemUiVisibility = (View.SYSTEM_UI_FLAG_FULLSCREEN
+                      or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                      or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                      or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                      or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                      or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION)
+              }
+
+              override fun onWindowFocusChanged(hasFocus: Boolean) {
+                  super.onWindowFocusChanged(hasFocus)
+                  if (hasFocus) hideSystemBars()
+              }
+
+              // ---------- Controles de toque ----------
+
+              private fun makeButton(label: String, w: Int, h: Int, round: Boolean, textSp: Float = 18f): TextView {
+                  return TextView(this).apply {
+                      text = label
+                      textSize = textSp
+                      setTextColor(Color.WHITE)
+                      gravity = Gravity.CENTER
+                      alpha = 0.6f
+                      background = GradientDrawable().apply {
+                          shape = if (round) GradientDrawable.OVAL else GradientDrawable.RECTANGLE
+                          if (!round) cornerRadius = dp(14).toFloat()
+                          setColor(Color.parseColor("#66000000"))
+                          setStroke(dp(2), Color.parseColor("#AAFFFFFF"))
+                      }
+                      layoutParams = FrameLayout.LayoutParams(dp(w), dp(h))
+                  }
+              }
+
+              private fun hold(v: View, code: Int) {
+                  v.setOnTouchListener { view, e ->
+                      when (e.actionMasked) {
+                          MotionEvent.ACTION_DOWN -> { view.alpha = 1f; key(code, true) }
+                          MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> { view.alpha = 0.6f; key(code, false) }
+                      }
+                      true
+                  }
+              }
+
+              private fun place(root: FrameLayout, v: View, gravity: Int, l: Int = 0, t: Int = 0, r: Int = 0, b: Int = 0) {
+                  val lp = v.layoutParams as FrameLayout.LayoutParams
+                  lp.gravity = gravity
+                  lp.setMargins(dp(l), dp(t), dp(r), dp(b))
+                  root.addView(v, lp)
+              }
+
+              private fun buildControls(root: FrameLayout) {
+                  // D-pad com diagonais
+                  val dpad = DPadView(this) { code, down -> key(code, down) }
+                  place(root, dpad.apply { layoutParams = FrameLayout.LayoutParams(dp(170), dp(170)) },
+                      Gravity.BOTTOM or Gravity.START, l = 28, b = 24)
+
+                  // Botões de ação estilo PlayStation (✕ ○ □ △)
+                  val cluster = FrameLayout(this)
+                  fun face(label: String, code: Int, g: Int) {
+                      val b = makeButton(label, 62, 62, true, 22f)
+                      hold(b, code)
+                      cluster.addView(b, (b.layoutParams as FrameLayout.LayoutParams).also { it.gravity = g })
+                  }
+                  face("△", KeyEvent.KEYCODE_BUTTON_Y, Gravity.TOP or Gravity.CENTER_HORIZONTAL)
+                  face("✕", KeyEvent.KEYCODE_BUTTON_A, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL)
+                  face("□", KeyEvent.KEYCODE_BUTTON_X, Gravity.START or Gravity.CENTER_VERTICAL)
+                  face("○", KeyEvent.KEYCODE_BUTTON_B, Gravity.END or Gravity.CENTER_VERTICAL)
+                  place(root, cluster.apply { layoutParams = FrameLayout.LayoutParams(dp(190), dp(190)) },
+                      Gravity.BOTTOM or Gravity.END, r = 28, b = 24)
+
+                  // Ombros
+                  fun shoulder(label: String, code: Int, g: Int, top: Int) {
+                      val b = makeButton(label, 64, 40, false, 14f)
+                      hold(b, code)
+                      place(root, b, g, l = 24, t = top, r = 24)
+                  }
+                  shoulder("L2", KeyEvent.KEYCODE_BUTTON_L2, Gravity.TOP or Gravity.START, 12)
+                  shoulder("L1", KeyEvent.KEYCODE_BUTTON_L1, Gravity.TOP or Gravity.START, 58)
+                  shoulder("R2", KeyEvent.KEYCODE_BUTTON_R2, Gravity.TOP or Gravity.END, 12)
+                  shoulder("R1", KeyEvent.KEYCODE_BUTTON_R1, Gravity.TOP or Gravity.END, 58)
+
+                  // Select / Start
+                  val sel = makeButton("SELECT", 80, 34, false, 11f)
+                  hold(sel, KeyEvent.KEYCODE_BUTTON_SELECT)
+                  place(root, sel, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL, r = 90, b = 20)
+                  val start = makeButton("START", 80, 34, false, 11f)
+                  hold(start, 
