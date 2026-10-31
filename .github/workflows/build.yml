@@ -112,11 +112,15 @@ jobs:
               assert old in s, "ancora nao encontrada: " + old
               s = s.replace(old, new, 1)
 
-          STARTUP = r'''        uiHandler.postDelayed({
-                      if (prefs.contains("res_core")) applyRes(prefs.getInt("res_core", 0), false)
-                      if (prefs.contains("res_screen")) applyRes(2 + prefs.getInt("res_screen", 0), false)
-                  }, 3000)
-          '''
+          CORE = r'''val hd = hdMode()
+                      coreFilePath = if (hd) "libswanstation_libretro_android.so" else "libpcsx_rearmed_libretro_android.so"
+                      if (hd) {
+                          variables = arrayOf(
+                              Variable("swanstation_GPU_Renderer", "OpenGL"),
+                              Variable("swanstation_GPU_ResolutionScale", prefs.getInt("hd_scale", 4).toString()),
+                              Variable("swanstation_GPU_PGXPEnable", "true")
+                          )
+                      }'''
 
           BUTTONS = r'''        // Botões FPS e RES (topo, centro)
                   fpsText = TextView(this).apply {
@@ -136,8 +140,9 @@ jobs:
 
           '''
 
-          METHODS = r'''    // ---------- FPS e resolução ----------
+          METHODS = r'''    // ---------- FPS e resolução (modo HD com SwanStation) ----------
 
+              private val hdLib = "libswanstation_libretro_android.so"
               private var fpsText: TextView? = null
               private var showFps = false
               private var frameCount = 0
@@ -152,6 +157,16 @@ jobs:
                       uiHandler.postDelayed(this, 1000)
                   }
               }
+
+              private fun toast(m: String) =
+                  android.widget.Toast.makeText(this, m, android.widget.Toast.LENGTH_LONG).show()
+
+              private fun hasBios(): Boolean =
+                  File(filesDir, "system").listFiles()?.any { it.extension.equals("bin", true) } == true
+
+              private fun hasHdCore(): Boolean = File(applicationInfo.nativeLibraryDir, hdLib).exists()
+
+              private fun hdMode(): Boolean = prefs.getInt("hd_scale", 0) >= 2 && hasBios() && hasHdCore()
 
               private fun toggleFps() {
                   showFps = !showFps
@@ -188,42 +203,38 @@ jobs:
                   }
               }
 
-              private fun applyRes(which: Int, save: Boolean) {
-                  val v = retro ?: return
-                  when (which) {
-                      0, 1 -> {
-                          setCoreVar("pcsx_rearmed_neon_enhancement_enable", if (which == 1) "enabled" else "disabled")
-                          if (save) prefs.edit().putInt("res_core", which).apply()
-                      }
-                      2 -> {
-                          v.holder.setSizeFromLayout()
-                          if (save) prefs.edit().putInt("res_screen", 0).apply()
-                      }
-                      3 -> {
-                          val w = (v.width * 0.6f).toInt()
-                          val h = (v.height * 0.6f).toInt()
-                          if (w > 0 && h > 0) v.holder.setFixedSize(w, h)
-                          if (save) prefs.edit().putInt("res_screen", 1).apply()
-                      }
-                  }
+              private fun showResolution() {
+                  val cur = prefs.getInt("hd_scale", 0)
+                  val now = if (hdMode()) "${cur}x HD" else "1x original"
+                  val labels = arrayOf(
+                      "1x Original (leve, não precisa de BIOS)",
+                      "2x HD", "3x HD", "4x HD", "5x HD", "6x HD", "8x HD", "10x HD (máximo)"
+                  )
+                  val values = intArrayOf(0, 2, 3, 4, 5, 6, 8, 10)
+                  AlertDialog.Builder(this)
+                      .setTitle("Resolução (atual: $now)")
+                      .setItems(labels) { _, i -> chooseScale(values[i]) }
+                      .show()
               }
 
-              private fun showResolution() {
-                  val core = if (prefs.getInt("res_core", 0) == 1) "2x" else "1x"
-                  val scr = if (prefs.getInt("res_screen", 0) == 1) "60%" else "100%"
-                  val items = arrayOf(
-                      "Interna 1x (original, mais leve)",
-                      "Interna 2x (melhorada, mais pesada)",
-                      "Tela nítida (100%)",
-                      "Tela leve (60%, mais rápida)"
-                  )
-                  AlertDialog.Builder(this)
-                      .setTitle("Resolução (interna: $core, tela: $scr)")
-                      .setItems(items) { _, which ->
-                          applyRes(which, true)
-                          android.widget.Toast.makeText(this, items[which], android.widget.Toast.LENGTH_SHORT).show()
-                      }
-                      .show()
+              private fun chooseScale(n: Int) {
+                  val wasHd = hdMode()
+                  if (n >= 2 && !hasBios()) {
+                      toast("O modo HD precisa de uma BIOS do PS1. Selecione uma na tela inicial (BIOS do PS1).")
+                      return
+                  }
+                  if (n >= 2 && !hasHdCore()) {
+                      toast("O núcleo HD não está nesta versão do app.")
+                      return
+                  }
+                  prefs.edit().putInt("hd_scale", n).apply()
+                  if (n >= 2 && wasHd) {
+                      setCoreVar("swanstation_GPU_ResolutionScale", n.toString())
+                      toast("Resolução ${n}x aplicada")
+                  } else {
+                      toast(if (n >= 2) "Reiniciando em modo HD ${n}x..." else "Voltando ao modo original...")
+                      recreate()
+                  }
               }
 
               override fun onDestroy() {
@@ -234,8 +245,8 @@ jobs:
 
           '''
 
-          rep("import java.io.File\n", "import java.io.File\nimport kotlinx.coroutines.MainScope\nimport kotlinx.coroutines.launch\n")
-          rep("        lifecycle.addObserver(view)\n", "        lifecycle.addObserver(view)\n" + STARTUP)
+          rep("import java.io.File\n", "import com.swordfish.libretrodroid.Variable\nimport java.io.File\nimport kotlinx.coroutines.MainScope\nimport kotlinx.coroutines.launch\n")
+          rep('coreFilePath = "libpcsx_rearmed_libretro_android.so"', CORE)
           rep("        // Menu (ícone de pausa, canto superior direito): editar controles e acelerar\n",
               BUTTONS + "        // Menu (ícone de pausa, canto superior direito): editar controles e acelerar\n")
           rep("    private fun showMenu() {", METHODS + "    private fun showMenu() {")
@@ -250,6 +261,7 @@ jobs:
           test -f libpcsx_rearmed_libretro_android.so || { echo "Nucleo nao encontrado"; ls -la; exit 1; }
           ls -la
           cd "$GITHUB_WORKSPACE"
+          curl -fL -o swan.zip https://buildbot.libretro.com/nightly/android/latest/arm64-v8a/swanstation_libretro_android.so.zip && unzip -o swan.zip -d proj/app/src/main/jniLibs/arm64-v8a/ && mv proj/app/src/main/jniLibs/arm64-v8a/swanstation_libretro_android.so proj/app/src/main/jniLibs/arm64-v8a/libswanstation_libretro_android.so || echo "SwanStation indisponivel: segue so com PCSX ReARMed"
 
       - uses: gradle/actions/setup-gradle@v3
         with:
