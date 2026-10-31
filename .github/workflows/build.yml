@@ -41,6 +41,49 @@ jobs:
           tr -d ' \r\n\t' < p5.txt | base64 -d | tar xz -C proj/app/src/main
           sed -i 's/android:label="Digimon World"/android:icon="@mipmap\/ic_launcher" android:label="DigiWorld"/' proj/app/src/main/AndroidManifest.xml
           sed -i 's/DIGIMON WORLD/DIGIWORLD/' proj/app/src/main/java/com/gustavo/digimonport/MainActivity.kt
+          cat > proj/app/src/main/java/com/gustavo/digimonport/AspectBox.kt <<'EOF_ASPECT'
+          package com.gustavo.digimonport
+
+          import android.content.Context
+          import android.view.View
+          import android.widget.FrameLayout
+
+          /** Caixa que centraliza o vídeo do jogo numa área 4:3, sem esticar nem desalinhar. */
+          class AspectBox(ctx: Context) : FrameLayout(ctx) {
+              private val ratio = 4f / 3f
+              private var cw = 0
+              private var ch = 0
+
+              override fun onMeasure(wSpec: Int, hSpec: Int) {
+                  val w = MeasureSpec.getSize(wSpec)
+                  val h = MeasureSpec.getSize(hSpec)
+                  cw = w
+                  ch = (w / ratio).toInt()
+                  if (ch > h) {
+                      ch = h
+                      cw = (h * ratio).toInt()
+                  }
+                  setMeasuredDimension(w, h)
+                  for (i in 0 until childCount) {
+                      getChildAt(i).measure(
+                          MeasureSpec.makeMeasureSpec(cw, MeasureSpec.EXACTLY),
+                          MeasureSpec.makeMeasureSpec(ch, MeasureSpec.EXACTLY)
+                      )
+                  }
+              }
+
+              override fun onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int) {
+                  val w = r - l
+                  val h = b - t
+                  for (i in 0 until childCount) {
+                      val c: View = getChildAt(i)
+                      c.layout((w - cw) / 2, (h - ch) / 2, (w + cw) / 2, (h + ch) / 2)
+                  }
+              }
+          }
+          EOF_ASPECT
+          sed -i 's|root.addView(view, FrameLayout.LayoutParams(-1, -1))|val box = AspectBox(this); box.addView(view); root.addView(box, FrameLayout.LayoutParams(-1, -1))|' proj/app/src/main/java/com/gustavo/digimonport/GameActivity.kt
+          grep -q "AspectBox(this)" proj/app/src/main/java/com/gustavo/digimonport/GameActivity.kt
           sed -i "s/versionCode = 1/versionCode = ${{ github.run_number }}/" proj/app/build.gradle.kts
           mkdir -p proj/app/src/main/jniLibs/arm64-v8a
           curl -L -o core.zip https://buildbot.libretro.com/nightly/android/latest/arm64-v8a/pcsx_rearmed_libretro_android.so.zip
