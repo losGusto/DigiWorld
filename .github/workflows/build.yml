@@ -84,6 +84,23 @@ jobs:
           EOF_ASPECT
           sed -i 's|root.addView(view, FrameLayout.LayoutParams(-1, -1))|val box = AspectBox(this); box.addView(view); root.addView(box, FrameLayout.LayoutParams(-1, -1))|' proj/app/src/main/java/com/gustavo/digimonport/GameActivity.kt
           grep -q "AspectBox(this)" proj/app/src/main/java/com/gustavo/digimonport/GameActivity.kt
+          python3 - <<'PYEOF'
+          p = "proj/app/src/main/assets/wiki.html"
+          s = open(p, encoding="utf8").read()
+          box = ('<details open class="ct"><summary>Controles no mapa (exploração)</summary><ul>'
+                 '<li><b>D-Pad:</b> move o personagem pelo cenário.</li>'
+                 '<li><b>✕:</b> anda / interage / inicia treinamentos no ginásio.</li>'
+                 '<li><b>○:</b> fala com personagens, examina objetos ou abre o inventário/ações rápidas.</li>'
+                 '<li><b>□:</b> executa o golpe final (Finisher) durante a batalha ou interações específicas.</li>'
+                 '<li><b>△:</b> abre o menu principal do jogo ou cancela/encerra o treinamento no ginásio.</li>'
+                 '<li><b>Start:</b> pausa o jogo (permite ver opções como salvar, carregar ou deletar jogo).</li>'
+                 '</ul></details>')
+          css = 'details.ct{margin:6px 14px;padding:8px 12px;background:#16222d;border-radius:10px;font-size:13px}details.ct summary{color:#FFB300;font-weight:bold}details.ct li{margin:5px 0}'
+          s = s.replace('<div class="f">', box + '<div class="f">', 1)
+          s = s.replace('</style>', css + '</style>', 1)
+          assert 'class="ct"' in s
+          open(p, "w", encoding="utf8").write(s)
+          PYEOF
           sed -i "s/versionCode = 1/versionCode = ${{ github.run_number }}/" proj/app/build.gradle.kts
           mkdir -p proj/app/src/main/jniLibs/arm64-v8a
           curl -L -o core.zip https://buildbot.libretro.com/nightly/android/latest/arm64-v8a/pcsx_rearmed_libretro_android.so.zip
