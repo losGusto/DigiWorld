@@ -45,7 +45,11 @@ jobs:
           mkdir -p proj/app/src/main/jniLibs/arm64-v8a
           curl -L -o core.zip https://buildbot.libretro.com/nightly/android/latest/arm64-v8a/pcsx_rearmed_libretro_android.so.zip
           unzip -o core.zip -d proj/app/src/main/jniLibs/arm64-v8a/
-          ls -la proj/app/src/main/jniLibs/arm64-v8a/
+          cd proj/app/src/main/jniLibs/arm64-v8a
+          if [ -f pcsx_rearmed_libretro_android.so ]; then mv pcsx_rearmed_libretro_android.so libpcsx_rearmed_libretro_android.so; fi
+          test -f libpcsx_rearmed_libretro_android.so || { echo "Nucleo nao encontrado"; ls -la; exit 1; }
+          ls -la
+          cd "$GITHUB_WORKSPACE"
 
       - uses: gradle/actions/setup-gradle@v3
         with:
