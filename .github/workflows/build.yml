@@ -102,6 +102,146 @@ jobs:
           open(p, "w", encoding="utf8").write(s)
           PYEOF
           sed -i "s/versionCode = 1/versionCode = ${{ github.run_number }}/" proj/app/build.gradle.kts
+          sed -i 's|implementation("androidx.activity:activity-ktx:1.9.0")|implementation("androidx.activity:activity-ktx:1.9.0")\n    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")|' proj/app/build.gradle.kts
+          python3 - <<'PYEOF2'
+          p = "proj/app/src/main/java/com/gustavo/digimonport/GameActivity.kt"
+          s = open(p, encoding="utf8").read()
+
+          def rep(old, new):
+              global s
+              assert old in s, "ancora nao encontrada: " + old
+              s = s.replace(old, new, 1)
+
+          STARTUP = r'''        uiHandler.postDelayed({
+                      if (prefs.contains("res_core")) applyRes(prefs.getInt("res_core", 0), false)
+                      if (prefs.contains("res_screen")) applyRes(2 + prefs.getInt("res_screen", 0), false)
+                  }, 3000)
+          '''
+
+          BUTTONS = r'''        // Botões FPS e RES (topo, centro)
+                  fpsText = TextView(this).apply {
+                      layoutParams = FrameLayout.LayoutParams(-2, -2)
+                      setTextColor(Color.GREEN)
+                      textSize = 14f
+                      setShadowLayer(4f, 0f, 0f, Color.BLACK)
+                      visibility = View.GONE
+                  }
+                  place(root, fpsText!!, Gravity.TOP or Gravity.CENTER_HORIZONTAL, t = 48)
+                  val bFps = pad(PadButton.SHOULDER, "FPS", 52, 30)
+                  place(root, bFps, Gravity.TOP or Gravity.CENTER_HORIZONTAL, r = 130, t = 10)
+                  control("fps", bFps, tapListener { toggleFps() })
+                  val bRes = pad(PadButton.SHOULDER, "RES", 52, 30)
+                  place(root, bRes, Gravity.TOP or Gravity.CENTER_HORIZONTAL, l = 130, t = 10)
+                  control("res", bRes, tapListener { showResolution() })
+
+          '''
+
+          METHODS = r'''    // ---------- FPS e resolução ----------
+
+              private var fpsText: TextView? = null
+              private var showFps = false
+              private var frameCount = 0
+              private var fpsJob: kotlinx.coroutines.Job? = null
+              private val uiScope = MainScope()
+              private val uiHandler = android.os.Handler(android.os.Looper.getMainLooper())
+              private val fpsTick = object : Runnable {
+                  override fun run() {
+                      if (!showFps) return
+                      fpsText?.text = "FPS: $frameCount"
+                      frameCount = 0
+                      uiHandler.postDelayed(this, 1000)
+                  }
+              }
+
+              private fun toggleFps() {
+                  showFps = !showFps
+                  fpsText?.visibility = if (showFps) View.VISIBLE else View.GONE
+                  uiHandler.removeCallbacks(fpsTick)
+                  fpsJob?.cancel()
+                  if (!showFps) return
+                  frameCount = 0
+                  fpsText?.text = "FPS: ..."
+                  fpsJob = uiScope.launch {
+                      try {
+                          val r = retro ?: return@launch
+                          @Suppress("UNCHECKED_CAST")
+                          val flow = r.javaClass.getMethod("getGLRetroEvents").invoke(r) as kotlinx.coroutines.flow.Flow<Any?>
+                          flow.collect { frameCount += 1 }
+                      } catch (t: Throwable) {
+                          fpsText?.text = "FPS: indisponível"
+                      }
+                  }
+                  uiHandler.postDelayed(fpsTick, 1000)
+              }
+
+              private fun setCoreVar(key: String, value: String): Boolean {
+                  val r = retro ?: return false
+                  return try {
+                      val vc = Class.forName("com.swordfish.libretrodroid.Variable")
+                      val v = vc.getConstructor(String::class.java, String::class.java).newInstance(key, value)
+                      val arr = java.lang.reflect.Array.newInstance(vc, 1)
+                      java.lang.reflect.Array.set(arr, 0, v)
+                      r.javaClass.getMethod("updateVariables", arr.javaClass).invoke(r, arr)
+                      true
+                  } catch (t: Throwable) {
+                      false
+                  }
+              }
+
+              private fun applyRes(which: Int, save: Boolean) {
+                  val v = retro ?: return
+                  when (which) {
+                      0, 1 -> {
+                          setCoreVar("pcsx_rearmed_neon_enhancement_enable", if (which == 1) "enabled" else "disabled")
+                          if (save) prefs.edit().putInt("res_core", which).apply()
+                      }
+                      2 -> {
+                          v.holder.setSizeFromLayout()
+                          if (save) prefs.edit().putInt("res_screen", 0).apply()
+                      }
+                      3 -> {
+                          val w = (v.width * 0.6f).toInt()
+                          val h = (v.height * 0.6f).toInt()
+                          if (w > 0 && h > 0) v.holder.setFixedSize(w, h)
+                          if (save) prefs.edit().putInt("res_screen", 1).apply()
+                      }
+                  }
+              }
+
+              private fun showResolution() {
+                  val core = if (prefs.getInt("res_core", 0) == 1) "2x" else "1x"
+                  val scr = if (prefs.getInt("res_screen", 0) == 1) "60%" else "100%"
+                  val items = arrayOf(
+                      "Interna 1x (original, mais leve)",
+                      "Interna 2x (melhorada, mais pesada)",
+                      "Tela nítida (100%)",
+                      "Tela leve (60%, mais rápida)"
+                  )
+                  AlertDialog.Builder(this)
+                      .setTitle("Resolução (interna: $core, tela: $scr)")
+                      .setItems(items) { _, which ->
+                          applyRes(which, true)
+                          android.widget.Toast.makeText(this, items[which], android.widget.Toast.LENGTH_SHORT).show()
+                      }
+                      .show()
+              }
+
+              override fun onDestroy() {
+                  uiHandler.removeCallbacksAndMessages(null)
+                  fpsJob?.cancel()
+                  super.onDestroy()
+              }
+
+          '''
+
+          rep("import java.io.File\n", "import java.io.File\nimport kotlinx.coroutines.MainScope\nimport kotlinx.coroutines.launch\n")
+          rep("        lifecycle.addObserver(view)\n", "        lifecycle.addObserver(view)\n" + STARTUP)
+          rep("        // Menu (ícone de pausa, canto superior direito): editar controles e acelerar\n",
+              BUTTONS + "        // Menu (ícone de pausa, canto superior direito): editar controles e acelerar\n")
+          rep("    private fun showMenu() {", METHODS + "    private fun showMenu() {")
+          open(p, "w", encoding="utf8").write(s)
+          PYEOF2
+          grep -q toggleFps proj/app/src/main/java/com/gustavo/digimonport/GameActivity.kt
           mkdir -p proj/app/src/main/jniLibs/arm64-v8a
           curl -L -o core.zip https://buildbot.libretro.com/nightly/android/latest/arm64-v8a/pcsx_rearmed_libretro_android.so.zip
           unzip -o core.zip -d proj/app/src/main/jniLibs/arm64-v8a/
