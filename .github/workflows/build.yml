@@ -19,7 +19,7 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      - name: Verificar arquivos p1..p4
+      - name: Verificar arquivos p1..p5
         run: |
           chk() {
             f="p$1.txt"
@@ -31,12 +31,16 @@ jobs:
           chk 2 047237b1b8acdfa2a84e0902318b17fb23f5622a0dfbd70d445641c6e442c6e6
           chk 3 ffc18d85e9407e89e7011b86de4d78692cf5254d039716ad5bea91b36d88375c
           chk 4 88600e982481921a4088e828d18b86bd9e91b046b581b50c59f484eb5e08f898
+          chk 5 46d0e4acf254a95b8b8216c20cdc324de41a9f48fa1ff0e396c0136ed38a7fc1
           echo "Todos os arquivos conferem."
 
       - name: Criar projeto
         run: |
           mkdir proj
-          cat p*.txt | tr -d ' \r\n\t' | base64 -d | tar xJ -C proj
+          cat p1.txt p2.txt p3.txt p4.txt | tr -d ' \r\n\t' | base64 -d | tar xJ -C proj
+          tr -d ' \r\n\t' < p5.txt | base64 -d | tar xz -C proj/app/src/main
+          sed -i 's/android:label="Digimon World"/android:icon="@mipmap\/ic_launcher" android:label="DigiWorld"/' proj/app/src/main/AndroidManifest.xml
+          sed -i 's/DIGIMON WORLD/DIGIWORLD/' proj/app/src/main/java/com/gustavo/digimonport/MainActivity.kt
           sed -i "s/versionCode = 1/versionCode = ${{ github.run_number }}/" proj/app/build.gradle.kts
           mkdir -p proj/app/src/main/jniLibs/arm64-v8a
           curl -L -o core.zip https://buildbot.libretro.com/nightly/android/latest/arm64-v8a/pcsx_rearmed_libretro_android.so.zip
