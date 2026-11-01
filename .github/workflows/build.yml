@@ -87,13 +87,22 @@ jobs:
           python3 - <<'PYEOF'
           p = "proj/app/src/main/assets/wiki.html"
           s = open(p, encoding="utf8").read()
-          box = ('<details open class="ct"><summary>Controles no mapa (exploração)</summary><ul>'
+          box = ('<details open class="ct"><summary>Controles no mapa (fora de batalha)</summary><ul>'
                  '<li><b>D-Pad:</b> move o personagem pelo cenário.</li>'
-                 '<li><b>✕:</b> anda / interage / inicia treinamentos no ginásio.</li>'
-                 '<li><b>○:</b> fala com personagens, examina objetos ou abre o inventário/ações rápidas.</li>'
-                 '<li><b>□:</b> executa o golpe final (Finisher) durante a batalha ou interações específicas.</li>'
-                 '<li><b>△:</b> abre o menu principal do jogo ou cancela/encerra o treinamento no ginásio.</li>'
-                 '<li><b>Start:</b> pausa o jogo (permite ver opções como salvar, carregar ou deletar jogo).</li>'
+                 '<li><b>✕:</b> interagir, conversar com NPCs ou examinar objetos.</li>'
+                 '<li><b>△:</b> abre o menu principal do jogo.</li>'
+                 '<li><b>□ e ○:</b> sem função direta.</li>'
+                 '<li><b>R1:</b> segurar para andar (em vez de correr).</li>'
+                 '<li><b>Start:</b> pausa o jogo.</li>'
+                 '<li><b>Select, L1, L2, R2:</b> sem função.</li>'
+                 '</ul></details>'
+                 '<details open class="ct"><summary>Controles em batalha</summary><ul>'
+                 '<li><b>D-Pad:</b> navega pelos comandos ou ícones de batalha.</li>'
+                 '<li><b>✕:</b> confirma e seleciona o comando de batalha.</li>'
+                 '<li><b>△:</b> abre o menu.</li>'
+                 '<li><b>□:</b> executa o Finishing Move (Golpe Final) assim que a palavra "FINISH!!" aparecer na tela.</li>'
+                 '<li><b>L1 / R1:</b> após soltar o Golpe Final, aperte rapidamente de forma repetida para carregar a barra e aumentar o dano extra.</li>'
+                 '<li><b>Select:</b> exibe a barra de HP do Digimon adversário.</li>'
                  '</ul></details>')
           css = 'details.ct{margin:6px 14px;padding:8px 12px;background:#16222d;border-radius:10px;font-size:13px}details.ct summary{color:#FFB300;font-weight:bold}details.ct li{margin:5px 0}'
           s = s.replace('<div class="f">', box + '<div class="f">', 1)
@@ -112,17 +121,7 @@ jobs:
               assert old in s, "ancora nao encontrada: " + old
               s = s.replace(old, new, 1)
 
-          CORE = r'''val hd = hdMode()
-                      coreFilePath = if (hd) "libswanstation_libretro_android.so" else "libpcsx_rearmed_libretro_android.so"
-                      if (hd) {
-                          variables = arrayOf(
-                              Variable("swanstation_GPU_Renderer", "OpenGL"),
-                              Variable("swanstation_GPU_ResolutionScale", prefs.getInt("hd_scale", 4).toString()),
-                              Variable("swanstation_GPU_PGXPEnable", "true")
-                          )
-                      }'''
-
-          BUTTONS = r'''        // Botões FPS e RES (topo, centro)
+          BUTTONS = r'''        // Botão FPS (topo, centro)
                   fpsText = TextView(this).apply {
                       layoutParams = FrameLayout.LayoutParams(-2, -2)
                       setTextColor(Color.GREEN)
@@ -132,17 +131,13 @@ jobs:
                   }
                   place(root, fpsText!!, Gravity.TOP or Gravity.CENTER_HORIZONTAL, t = 48)
                   val bFps = pad(PadButton.SHOULDER, "FPS", 52, 30)
-                  place(root, bFps, Gravity.TOP or Gravity.CENTER_HORIZONTAL, r = 130, t = 10)
+                  place(root, bFps, Gravity.TOP or Gravity.CENTER_HORIZONTAL, t = 10)
                   control("fps", bFps, tapListener { toggleFps() })
-                  val bRes = pad(PadButton.SHOULDER, "RES", 52, 30)
-                  place(root, bRes, Gravity.TOP or Gravity.CENTER_HORIZONTAL, l = 130, t = 10)
-                  control("res", bRes, tapListener { showResolution() })
 
           '''
 
-          METHODS = r'''    // ---------- FPS e resolução (modo HD com SwanStation) ----------
+          METHODS = r'''    // ---------- FPS ----------
 
-              private val hdLib = "libswanstation_libretro_android.so"
               private var fpsText: TextView? = null
               private var showFps = false
               private var frameCount = 0
@@ -157,16 +152,6 @@ jobs:
                       uiHandler.postDelayed(this, 1000)
                   }
               }
-
-              private fun toast(m: String) =
-                  android.widget.Toast.makeText(this, m, android.widget.Toast.LENGTH_LONG).show()
-
-              private fun hasBios(): Boolean =
-                  File(filesDir, "system").listFiles()?.any { it.extension.equals("bin", true) } == true
-
-              private fun hasHdCore(): Boolean = File(applicationInfo.nativeLibraryDir, hdLib).exists()
-
-              private fun hdMode(): Boolean = prefs.getInt("hd_scale", 0) >= 2 && hasBios() && hasHdCore()
 
               private fun toggleFps() {
                   showFps = !showFps
@@ -189,54 +174,6 @@ jobs:
                   uiHandler.postDelayed(fpsTick, 1000)
               }
 
-              private fun setCoreVar(key: String, value: String): Boolean {
-                  val r = retro ?: return false
-                  return try {
-                      val vc = Class.forName("com.swordfish.libretrodroid.Variable")
-                      val v = vc.getConstructor(String::class.java, String::class.java).newInstance(key, value)
-                      val arr = java.lang.reflect.Array.newInstance(vc, 1)
-                      java.lang.reflect.Array.set(arr, 0, v)
-                      r.javaClass.getMethod("updateVariables", arr.javaClass).invoke(r, arr)
-                      true
-                  } catch (t: Throwable) {
-                      false
-                  }
-              }
-
-              private fun showResolution() {
-                  val cur = prefs.getInt("hd_scale", 0)
-                  val now = if (hdMode()) "${cur}x HD" else "1x original"
-                  val labels = arrayOf(
-                      "1x Original (leve, não precisa de BIOS)",
-                      "2x HD", "3x HD", "4x HD", "5x HD", "6x HD", "8x HD", "10x HD (máximo)"
-                  )
-                  val values = intArrayOf(0, 2, 3, 4, 5, 6, 8, 10)
-                  AlertDialog.Builder(this)
-                      .setTitle("Resolução (atual: $now)")
-                      .setItems(labels) { _, i -> chooseScale(values[i]) }
-                      .show()
-              }
-
-              private fun chooseScale(n: Int) {
-                  val wasHd = hdMode()
-                  if (n >= 2 && !hasBios()) {
-                      toast("O modo HD precisa de uma BIOS do PS1. Selecione uma na tela inicial (BIOS do PS1).")
-                      return
-                  }
-                  if (n >= 2 && !hasHdCore()) {
-                      toast("O núcleo HD não está nesta versão do app.")
-                      return
-                  }
-                  prefs.edit().putInt("hd_scale", n).apply()
-                  if (n >= 2 && wasHd) {
-                      setCoreVar("swanstation_GPU_ResolutionScale", n.toString())
-                      toast("Resolução ${n}x aplicada")
-                  } else {
-                      toast(if (n >= 2) "Reiniciando em modo HD ${n}x..." else "Voltando ao modo original...")
-                      recreate()
-                  }
-              }
-
               override fun onDestroy() {
                   uiHandler.removeCallbacksAndMessages(null)
                   fpsJob?.cancel()
@@ -245,8 +182,7 @@ jobs:
 
           '''
 
-          rep("import java.io.File\n", "import com.swordfish.libretrodroid.Variable\nimport java.io.File\nimport kotlinx.coroutines.MainScope\nimport kotlinx.coroutines.launch\n")
-          rep('coreFilePath = "libpcsx_rearmed_libretro_android.so"', CORE)
+          rep("import java.io.File\n", "import java.io.File\nimport kotlinx.coroutines.MainScope\nimport kotlinx.coroutines.launch\n")
           rep("        // Menu (ícone de pausa, canto superior direito): editar controles e acelerar\n",
               BUTTONS + "        // Menu (ícone de pausa, canto superior direito): editar controles e acelerar\n")
           rep("    private fun showMenu() {", METHODS + "    private fun showMenu() {")
@@ -261,7 +197,6 @@ jobs:
           test -f libpcsx_rearmed_libretro_android.so || { echo "Nucleo nao encontrado"; ls -la; exit 1; }
           ls -la
           cd "$GITHUB_WORKSPACE"
-          curl -fL -o swan.zip https://buildbot.libretro.com/nightly/android/latest/arm64-v8a/swanstation_libretro_android.so.zip && unzip -o swan.zip -d proj/app/src/main/jniLibs/arm64-v8a/ && mv proj/app/src/main/jniLibs/arm64-v8a/swanstation_libretro_android.so proj/app/src/main/jniLibs/arm64-v8a/libswanstation_libretro_android.so || echo "SwanStation indisponivel: segue so com PCSX ReARMed"
 
       - uses: gradle/actions/setup-gradle@v3
         with:
