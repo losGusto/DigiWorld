@@ -1,25 +1,34 @@
-# Como jogar
-1 Você 
-vai em selecionar jogo e vai selecionar a Bin e cue juntas
 
-1,5 se quiser colocar BIOS você mais não é obrigatório
+# Digimon World 1 - Android
 
-2 daí é só você clica em jogar fácil e rápido
+Port de Digimon World 1 para dispositivos Android, desenvolvido por LosGusto.
 
-# Mecanicas
+## Informações
 
-Bola = Enter
+- **Projeto:** DigiWorld
+- **Jogo:** Digimon World 1
+- **Desenvolvedor:** LosGusto
+- **Plataforma:** Android
+- **Sistema original:** PlayStation 1
+- **Compatibilidade:** Exclusivamente Digimon World 1
+- **Formato:** BIN/CUE
+- **Núcleo de emulação:** PCSX-ReARMed
 
-Quadrado = Back
+## Sobre o projeto
 
-X = Menu
+O DigiWorld é um projeto Android dedicado a executar Digimon World 1.
 
-FPS = Mostra o fps
+O aplicativo possui seu próprio núcleo de emulação integrado, sem exigir a instalação de um emulador externo.
 
-R1 = Walk
+## Compatibilidade
 
-W = Mostra a wiki
+O projeto foi desenvolvido especificamente para Digimon World 1.
 
-# Gameplay
+## Desenvolvedor
 
-https://youtu.be/0IgcCPQu1Gk?is=0ACFa-lEbjULtD6O
+LosGusto
+
+## Aviso
+
+Este projeto não inclui arquivos de ROM do jogo.
+Utilize somente arquivos que você tenha autorização para utilizar.
