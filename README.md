@@ -1,4 +1,4 @@
-# Como colocar a Bin e cue
+# Como joga
 1 Você 
 vai em selecionar jogo e escolhe a pasta que tem a Bin e cue
 
