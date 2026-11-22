@@ -19,3 +19,5 @@ FPS = Mostra o fps
 R1 = Walk
 
 W = Mostra a wiki
+
+# Gameplay
