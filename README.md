@@ -21,3 +21,5 @@ R1 = Walk
 W = Mostra a wiki
 
 # Gameplay
+
+https://youtu.be/0IgcCPQu1Gk?is=0ACFa-lEbjULtD6O
