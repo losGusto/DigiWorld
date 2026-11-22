@@ -1,6 +1,6 @@
 # Como jogar
 1 Você 
-vai em selecionar jogo e escolhe a pasta que tem a Bin e cue
+vai em selecionar jogo e va selecionar a Bin e cue juntas
 
 1,5 se quiser colocar BIOS você mais não é obrigatório
 
